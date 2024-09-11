@@ -1,6 +1,8 @@
 use std::ops::{Deref, DerefMut};
 use std::{marker, mem, ptr};
 
+use mdb::lmdb_flags::DeleteFlags;
+
 use crate::mdb::error::mdb_result;
 use crate::mdb::ffi;
 use crate::*;
@@ -233,6 +235,35 @@ impl<'txn> RoCursor<'txn> {
             Err(e) => Err(e.into()),
         }
     }
+
+    pub fn move_on_key_dup(
+        &mut self,
+        key: &[u8],
+        data: &[u8],
+    ) -> Result<Option<(&'txn [u8], &'txn [u8])>> {
+        let mut key_val = unsafe { crate::into_val(key) };
+        let mut data_val = unsafe { crate::into_val(data) };
+
+        // Move the cursor to the specified key
+        let result = unsafe {
+            mdb_result(ffi::mdb_cursor_get(
+                self.cursor,
+                &mut key_val,
+                &mut data_val,
+                ffi::cursor_op::MDB_GET_BOTH,
+            ))
+        };
+
+        match result {
+            Ok(()) => {
+                let key = unsafe { crate::from_val(key_val) };
+                let data = unsafe { crate::from_val(data_val) };
+                Ok(Some((key, data)))
+            }
+            Err(e) if e.not_found() => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 impl Drop for RoCursor<'_> {
@@ -266,6 +297,30 @@ impl<'txn> RwCursor<'txn> {
     pub unsafe fn del_current(&mut self) -> Result<bool> {
         // Delete the current entry
         let result = mdb_result(ffi::mdb_cursor_del(self.cursor.cursor, 0));
+
+        match result {
+            Ok(()) => Ok(true),
+            Err(e) if e.not_found() => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Delete the entry the cursor is currently pointing to with the given flags.
+    ///
+    /// Returns `true` if the entry was successfully deleted.
+    ///
+    /// # Safety
+    ///
+    /// It is _[undefined behavior]_ to keep a reference of a value from this database
+    /// while modifying it.
+    ///
+    /// > [Values returned from the database are valid only until a subsequent update operation,
+    /// > or the end of the transaction.](http://www.lmdb.tech/doc/group__mdb.html#structMDB__val)
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    pub unsafe fn del_current_with_flags(&mut self, flags: DeleteFlags) -> Result<bool> {
+        // Delete the current entry
+        let result = mdb_result(ffi::mdb_cursor_del(self.cursor.cursor, flags.bits()));
 
         match result {
             Ok(()) => Ok(true),

@@ -28,16 +28,19 @@ pub mod cursor_op {
     pub const MDB_NEXT_NODUP: MDB_cursor_op = ffi::MDB_NEXT_NODUP;
     pub const MDB_NEXT_DUP: MDB_cursor_op = ffi::MDB_NEXT_DUP;
     pub const MDB_GET_CURRENT: MDB_cursor_op = ffi::MDB_GET_CURRENT;
+    pub const MDB_GET_BOTH: MDB_cursor_op = ffi::MDB_GET_BOTH;
 }
 
 pub fn reserve_size_val(size: usize) -> ffi::MDB_val {
     ffi::MDB_val { mv_size: size, mv_data: ptr::null_mut() }
 }
 
+#[allow(missing_docs)]
 pub unsafe fn into_val(value: &[u8]) -> ffi::MDB_val {
     ffi::MDB_val { mv_data: value.as_ptr() as *mut libc::c_void, mv_size: value.len() }
 }
 
+#[allow(missing_docs)]
 pub unsafe fn from_val<'a>(value: ffi::MDB_val) -> &'a [u8] {
     std::slice::from_raw_parts(value.mv_data as *const u8, value.mv_size)
 }

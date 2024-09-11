@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::marker;
 
+use mdb::lmdb_flags::DeleteFlags;
 use types::LazyDecode;
 
 use crate::iteration_method::{IterationMethod, MoveBetweenKeys, MoveThroughDuplicateValues};
@@ -127,6 +128,29 @@ impl<'txn, KC, DC, IM> RoIter<'txn, KC, DC, IM> {
         }
     }
 
+    /// Move the underlying cursor to given key and data. Returns bool to indicate success.
+    pub fn move_on_key_dup<'a>(
+        &mut self,
+        key: &'a KC::EItem,
+        data: &'a DC::EItem,
+    ) -> Result<Option<(KC::DItem, DC::DItem)>>
+    where
+        KC: BytesEncode<'a> + BytesDecode<'txn>,
+        DC: BytesEncode<'a> + BytesDecode<'txn>,
+    {
+        let key_bytes: Cow<[u8]> = KC::bytes_encode(key).map_err(Error::Encoding)?;
+        let data_bytes: Cow<[u8]> = DC::bytes_encode(data).map_err(Error::Encoding)?;
+
+        let result = self.cursor.move_on_key_dup(&key_bytes, &data_bytes)?;
+        match result {
+            Some((key, data)) => Ok(Some((
+                KC::bytes_decode(key).map_err(Error::Encoding)?,
+                DC::bytes_decode(data).map_err(Error::Encoding)?,
+            ))),
+            None => Ok(None),
+        }
+    }
+
     /// Change the codec types of this iterator, specifying the codecs.
     pub fn remap_types<KC2, DC2>(self) -> RoIter<'txn, KC2, DC2, IM> {
         RoIter {
@@ -240,6 +264,23 @@ impl<'txn, KC, DC, IM> RwIter<'txn, KC, DC, IM> {
         self.cursor.del_current()
     }
 
+    /// Delete the entry the cursor is currently pointing to with the specified flags.
+    ///
+    /// Returns `true` if the entry was successfully deleted.
+    ///
+    /// # Safety
+    ///
+    /// It is _[undefined behavior]_ to keep a reference of a value from this database
+    /// while modifying it.
+    ///
+    /// > [Values returned from the database are valid only until a subsequent update operation,
+    /// > or the end of the transaction.](http://www.lmdb.tech/doc/group__mdb.html#structMDB__val)
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    pub unsafe fn del_current_with_flags(&mut self, flags: DeleteFlags) -> Result<bool> {
+        self.cursor.del_current_with_flags(flags)
+    }
+
     /// Write a new value to the current entry.
     ///
     /// The given key **must** be equal to the one this cursor is pointing otherwise the database
@@ -322,18 +363,18 @@ impl<'txn, KC, DC, IM> RwIter<'txn, KC, DC, IM> {
     /// > or the end of the transaction.](http://www.lmdb.tech/doc/group__mdb.html#structMDB__val)
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
-    pub unsafe fn put_current_with_options<'a, NDC>(
+    pub unsafe fn put_current_with_options<'a>(
         &mut self,
         flags: PutFlags,
         key: &'a KC::EItem,
-        data: &'a NDC::EItem,
+        data: &'a DC::EItem,
     ) -> Result<()>
     where
         KC: BytesEncode<'a>,
-        NDC: BytesEncode<'a>,
+        DC: BytesEncode<'a>,
     {
         let key_bytes: Cow<[u8]> = KC::bytes_encode(key).map_err(Error::Encoding)?;
-        let data_bytes: Cow<[u8]> = NDC::bytes_encode(data).map_err(Error::Encoding)?;
+        let data_bytes: Cow<[u8]> = DC::bytes_encode(data).map_err(Error::Encoding)?;
         self.cursor.put_current_with_flags(flags, &key_bytes, &data_bytes)
     }
 
@@ -356,6 +397,38 @@ impl<'txn, KC, DC, IM> RwIter<'txn, KC, DC, IM> {
             cursor: self.cursor,
             move_on_first: self.move_on_first,
             _phantom: marker::PhantomData,
+        }
+    }
+
+    /// Move cursor to given key. Returns bool to indicate success.
+    pub fn move_on_key<'a>(&mut self, key: &'a KC::EItem) -> Result<bool>
+    where
+        KC: BytesEncode<'a>,
+    {
+        let key_bytes: Cow<[u8]> = KC::bytes_encode(key).map_err(Error::Encoding)?;
+        self.cursor.move_on_key(&key_bytes)
+    }
+
+    /// Move the underlying cursor to given key and data. Returns bool to indicate success.
+    pub fn move_on_key_dup<'a>(
+        &mut self,
+        key: &'a KC::EItem,
+        data: &'a DC::EItem,
+    ) -> Result<Option<(KC::DItem, DC::DItem)>>
+    where
+        KC: BytesEncode<'a> + BytesDecode<'txn>,
+        DC: BytesEncode<'a> + BytesDecode<'txn>,
+    {
+        let key_bytes: Cow<[u8]> = KC::bytes_encode(key).map_err(Error::Encoding)?;
+        let data_bytes: Cow<[u8]> = DC::bytes_encode(data).map_err(Error::Encoding)?;
+
+        let result = self.cursor.move_on_key_dup(&key_bytes, &data_bytes)?;
+        match result {
+            Some((key, data)) => Ok(Some((
+                KC::bytes_decode(key).map_err(Error::Encoding)?,
+                DC::bytes_decode(data).map_err(Error::Encoding)?,
+            ))),
+            None => Ok(None),
         }
     }
 
@@ -589,6 +662,23 @@ impl<'txn, KC, DC, IM> RwRevIter<'txn, KC, DC, IM> {
         self.cursor.del_current()
     }
 
+    /// Delete the entry the cursor is currently pointing to with the specified flags.
+    ///
+    /// Returns `true` if the entry was successfully deleted.
+    ///
+    /// # Safety
+    ///
+    /// It is _[undefined behavior]_ to keep a reference of a value from this database
+    /// while modifying it.
+    ///
+    /// > [Values returned from the database are valid only until a subsequent update operation,
+    /// > or the end of the transaction.](http://www.lmdb.tech/doc/group__mdb.html#structMDB__val)
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    pub unsafe fn del_current_with_flags(&mut self, flags: DeleteFlags) -> Result<bool> {
+        self.cursor.del_current_with_flags(flags)
+    }
+
     /// Write a new value to the current entry.
     ///
     /// The given key **must** be equal to the one this cursor is pointing otherwise the database
@@ -671,18 +761,18 @@ impl<'txn, KC, DC, IM> RwRevIter<'txn, KC, DC, IM> {
     /// > or the end of the transaction.](http://www.lmdb.tech/doc/group__mdb.html#structMDB__val)
     ///
     /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
-    pub unsafe fn put_current_with_options<'a, NDC>(
+    pub unsafe fn put_current_with_options<'a>(
         &mut self,
         flags: PutFlags,
         key: &'a KC::EItem,
-        data: &'a NDC::EItem,
+        data: &'a DC::EItem,
     ) -> Result<()>
     where
         KC: BytesEncode<'a>,
-        NDC: BytesEncode<'a>,
+        DC: BytesEncode<'a>,
     {
         let key_bytes: Cow<[u8]> = KC::bytes_encode(key).map_err(Error::Encoding)?;
-        let data_bytes: Cow<[u8]> = NDC::bytes_encode(data).map_err(Error::Encoding)?;
+        let data_bytes: Cow<[u8]> = DC::bytes_encode(data).map_err(Error::Encoding)?;
         self.cursor.put_current_with_flags(flags, &key_bytes, &data_bytes)
     }
 
