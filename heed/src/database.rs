@@ -2596,6 +2596,22 @@ impl<KC, DC, C> Database<KC, DC, C> {
     pub fn lazily_decode_data(&self) -> Database<KC, LazyDecode<DC>, C> {
         self.remap_types::<KC, LazyDecode<DC>>()
     }
+
+    /// Set a custom data comparison function for a MDB_DUPSORT database.
+    ///
+    /// http://www.lmdb.tech/doc/group__internal.html#gacef4ec3dab0bbd9bc978b73c19c879ae
+    pub fn set_dupsort_cmp(
+        &self,
+        txn: &mut RwTxn,
+        cmp: lmdb_master_sys::MDB_cmp_func,
+    ) -> Result<bool> {
+        let result = unsafe { mdb_result(ffi::mdb_set_dupsort(txn.txn.txn, self.dbi, cmp)) };
+
+        match result {
+            Ok(()) => Ok(true),
+            Err(err) => Err(err.into()),
+        }
+    }
 }
 
 impl<KC, DC, C> Clone for Database<KC, DC, C> {
