@@ -31,9 +31,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     // We try to append ordered entries in the second database.
     let mut iter = second.iter_mut(&mut wtxn)?;
 
-    unsafe { iter.put_current_with_options::<Str>(PutFlags::APPEND, "aaaa", "lol")? };
-    unsafe { iter.put_current_with_options::<Str>(PutFlags::APPEND, "abcd", "lol")? };
-    unsafe { iter.put_current_with_options::<Str>(PutFlags::APPEND, "bcde", "lol")? };
+    unsafe { iter.put_current_with_options(PutFlags::APPEND, "aaaa", "lol")? };
+    unsafe { iter.put_current_with_options(PutFlags::APPEND, "abcd", "lol")? };
+    unsafe { iter.put_current_with_options(PutFlags::APPEND, "bcde", "lol")? };
 
     drop(iter);
 

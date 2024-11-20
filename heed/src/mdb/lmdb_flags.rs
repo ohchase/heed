@@ -409,3 +409,16 @@ bitflags! {
         const APPEND_DUP = ffi::MDB_APPENDDUP;
     }
 }
+
+bitflags! {
+    /// LMDB delete flags (see <http://www.lmdb.tech/doc/group__mdb.html#ga26a52d3efcfd72e5bf6bd6960bf75f95>
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+    #[repr(transparent)]
+    pub struct DeleteFlags: u32 {
+        /// Delete all of the data items for the current key.
+        ///
+        /// This flag may only be specified if the database was opened with MDB_DUPSORT.
+        ///
+        const NO_DUP_DATA = ffi::MDB_NODUPDATA;
+    }
+}
