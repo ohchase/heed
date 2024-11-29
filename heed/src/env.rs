@@ -739,7 +739,7 @@ impl Env {
 
             if TypeId::of::<CDUP>() != TypeId::of::<DefaultComparator>() {
                 mdb_result(ffi::mdb_set_dupsort(
-                    raw_txn,
+                    raw_txn.as_mut(),
                     dbi,
                     Some(custom_key_cmp_wrapper::<CDUP>),
                 ))?;
